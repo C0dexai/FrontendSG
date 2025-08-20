@@ -1,0 +1,30 @@
+html, body {
+  height: 100%;
+  margin: 0;
+  color: #fff;
+  font-family: 'Roboto', sans-serif;
+}
+body {
+  background-color: #000408;
+  background-image:
+    linear-gradient(to bottom, #020111 0%, #0c0021 60%, #1f003a 100%),
+    radial-gradient(ellipse at center top, rgba(255, 100, 220, 0.3) 0%, transparent 40%),
+    radial-gradient(ellipse at center bottom, rgba(50, 0, 100, 0.5) 0%, transparent 60%);
+  background-size: cover;
+  background-attachment: fixed;
+  background-position: center;
+  overflow: hidden; /* Prevent body scroll, individual containers will scroll */
+}
+body.dragging {
+  cursor: grabbing;
+}
+body.dragging * {
+  user-select: none;
+  pointer-events: none;
+}
+
+/* App container */
+#app-container {
+  height: 100vh;
+  width: 100vw;
+}
