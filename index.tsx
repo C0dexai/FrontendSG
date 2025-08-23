@@ -731,6 +731,22 @@ class BeatSequencer extends LitElement {
       font-size: 1.5vmin;
       font-family: inherit;
     }
+    .sequencer-controls button {
+      background-color: #2a2a2a;
+      color: #eee;
+      border: 1px solid #666;
+      border-radius: 3px;
+      padding: 0.6vmin 1.2vmin;
+      font-size: 1.5vmin;
+      font-family: inherit;
+      cursor: pointer;
+      font-weight: bold;
+      transition: all 0.2s ease;
+    }
+    .sequencer-controls button:hover {
+      background-color: #3a3a3a;
+      color: #fff;
+    }
     .weight-control {
       display: flex;
       align-items: center;
@@ -888,6 +904,13 @@ class BeatSequencer extends LitElement {
     }
   }
 
+  private handleRandomize() {
+    this.grid = this.grid.map((track) =>
+      track.map(() => (Math.random() < 0.25 ? 1 : 0)),
+    );
+    this.dispatchChange();
+  }
+
   private handleWeightChange(e: Event) {
     this.weight = Number((e.target as HTMLInputElement).value);
     this.dispatchChange();
@@ -913,6 +936,7 @@ class BeatSequencer extends LitElement {
             (name) => html`<option value=${name}>${name}</option>`,
           )}
         </select>
+        <button @click=${this.handleRandomize}>RANDOMIZE</button>
         <div class="weight-control">
           <label for="beat-weight">WEIGHT:</label>
           <input
@@ -1989,7 +2013,7 @@ class PromptDj extends LitElement {
   }
 
   private handleSettingsChange(e: CustomEvent<LiveMusicGenerationConfig>) {
-    this.session.setMusicGenerationConfig(e.detail);
+    this.session.setMusicGenerationConfig({musicGenerationConfig: e.detail});
     if (e.detail.bpm) {
       this.currentBpm = e.detail.bpm;
     }
