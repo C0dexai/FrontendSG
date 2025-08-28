@@ -759,10 +759,24 @@ class BeatSequencer extends LitElement {
     }
     .sequencer-grid {
       display: grid;
-      grid-template-columns: 10vmin repeat(16, 1fr);
+      grid-template-columns: 2vmin 10vmin repeat(16, 1fr);
       gap: 0.5vmin;
       overflow-x: auto;
       flex-grow: 1;
+    }
+    .visualizer {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .visualizer-bar {
+      width: 50%;
+      height: 100%;
+      background-color: #ff0044;
+      transform-origin: bottom;
+      transform: scaleY(0);
+      transition: transform 0.05s ease-out;
+      box-shadow: 0 0 1vmin #ff0044;
     }
     .instrument-label {
       display: flex;
@@ -781,15 +795,30 @@ class BeatSequencer extends LitElement {
       cursor: pointer;
       transition: all 0.1s ease;
       position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
     .step:hover {
       background-color: #555;
     }
-    .step.active {
+    .step.active-1 {
+      /* Soft */
+      background-color: #ff004466;
+      border-color: #ff558866;
+      box-shadow: inset 0 0 1vmin #00000088;
+    }
+    .step.active-2 {
+      /* Medium */
       background-color: #ff0044;
       border-color: #ff5588;
-      box-shadow: 0 0 0.5vmin #fff, 0 0 1.5vmin #ff0044,
-        0 0 2.5vmin #ff0044aa;
+    }
+    .step.active-3 {
+      /* Loud */
+      background-color: #ff5588;
+      border-color: #ff99bb;
+      box-shadow: 0 0 0.7vmin #fff, 0 0 2vmin #ff0044, 0 0 3.5vmin #ff0044;
+      transform: scale(1.05);
     }
     .step.playing::after {
       content: '';
@@ -811,13 +840,29 @@ class BeatSequencer extends LitElement {
         opacity: 0.7;
       }
     }
+    .panning-indicator {
+      color: rgba(255, 255, 255, 0.8);
+      font-size: 1.4vmin;
+      font-weight: bold;
+      user-select: none;
+      text-shadow: 0 0 3px #000;
+      display: none; /* Hidden by default */
+      line-height: 1;
+    }
+    .step.active-1 .panning-indicator,
+    .step.active-2 .panning-indicator,
+    .step.active-3 .panning-indicator {
+      display: block; /* Show on active steps */
+    }
   `;
 
   @property({type: Array}) grid: number[][] = [];
+  @property({type: Array}) panningGrid: number[][] = [];
   @property({type: Number}) weight = 0;
   @property({type: String}) playbackState: PlaybackState = 'stopped';
   @property({type: Number}) bpm = 120;
   @state() private currentStep = -1;
+  @state() private trackVisualizerLevels: number[] = [];
 
   private instruments = [
     'Kick',
@@ -826,26 +871,65 @@ class BeatSequencer extends LitElement {
     'Closed Hat',
     'Open Hat',
     'Tom',
+    'Percussion',
   ];
   private numSteps = 16;
   private stepInterval?: number;
 
   private presets: Record<string, number[][]> = {
     'Brutalism': [
-      [1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0], // Kick
-      [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1], // Snare
-      [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0], // Clap
-      [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1], // Closed Hat
-      [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1], // Open Hat
-      [1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0], // Tom
+      [2, 0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 0], // Kick
+      [0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 2], // Snare
+      [0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0], // Clap
+      [2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2], // Closed Hat
+      [0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 2], // Open Hat
+      [2, 0, 0, 2, 0, 0, 2, 0, 0, 2, 0, 0, 2, 0, 0, 0], // Tom
+      [0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 2, 0, 0], // Percussion
     ],
     'House': [
-      [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0], // Kick
-      [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0], // Snare
+      [2, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0], // Kick
+      [0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0], // Snare
       [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], // Clap
-      [0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0], // Closed Hat
-      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0], // Open Hat
+      [0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 2, 0], // Closed Hat
+      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0], // Open Hat
       [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], // Tom
+      [0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0], // Percussion
+    ],
+    'Gabber': [
+      [2, 2, 2, 0, 2, 2, 2, 0, 2, 2, 2, 0, 2, 2, 2, 0], // Kick
+      [0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0], // Snare
+      [0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 2], // Clap
+      [2, 0, 2, 2, 2, 0, 2, 2, 2, 0, 2, 2, 2, 0, 2, 2], // Closed Hat
+      [0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 2, 0], // Open Hat
+      [0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0], // Tom
+      [0, 2, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0], // Percussion
+    ],
+    'Deep Drums': [
+      [2, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0], // Kick
+      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], // Snare
+      [0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0], // Clap
+      [0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 2, 0], // Closed Hat
+      [0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 2], // Open Hat
+      [0, 2, 0, 0, 0, 0, 0, 0, 0, 2, 0, 2, 0, 0, 0, 0], // Tom
+      [0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0], // Percussion
+    ],
+    '808': [
+      [2, 0, 0, 2, 0, 0, 2, 0, 2, 0, 0, 0, 0, 2, 0, 0], // Kick
+      [0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0], // Snare
+      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], // Clap
+      [2, 2, 2, 0, 2, 2, 2, 0, 2, 2, 2, 2, 2, 2, 2, 0], // Closed Hat
+      [0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0], // Open Hat
+      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], // Tom
+      [0, 0, 2, 0, 0, 0, 0, 0, 0, 2, 0, 0, 2, 0, 0, 0], // Percussion
+    ],
+    '505': [
+      [2, 0, 0, 0, 2, 0, 2, 0, 2, 0, 0, 0, 2, 0, 2, 0], // Kick
+      [0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 2], // Snare
+      [0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0], // Clap
+      [2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2], // Closed Hat
+      [0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 2, 0], // Open Hat
+      [0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 2, 0, 2, 0, 0], // Tom
+      [0, 0, 0, 0, 0, 2, 0, 2, 0, 0, 0, 0, 0, 2, 0, 2], // Percussion
     ],
     'Clear': [
       [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -854,8 +938,17 @@ class BeatSequencer extends LitElement {
       [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
       [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
       [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], // Percussion
     ],
   };
+
+  constructor() {
+    super();
+    this.trackVisualizerLevels = this.instruments.map(() => 0);
+    this.panningGrid = this.instruments.map(() =>
+      Array(this.numSteps).fill(0),
+    );
+  }
 
   override updated(changedProperties: Map<string, unknown>) {
     if (
@@ -883,16 +976,54 @@ class BeatSequencer extends LitElement {
       const stepDuration = (60 / this.bpm) * (1000 / 4); // 16th notes
       this.stepInterval = window.setInterval(() => {
         this.currentStep = (this.currentStep + 1) % this.numSteps;
+        this.trackVisualizerLevels = this.instruments.map((_, trackIndex) => {
+          const stepVelocity = this.grid[trackIndex]?.[this.currentStep] ?? 0;
+          // Normalize velocity to 0-1 for visualizer scale
+          return stepVelocity > 0 ? stepVelocity / 3.0 : 0;
+        });
       }, stepDuration);
     } else {
       this.currentStep = -1;
+      this.trackVisualizerLevels = this.instruments.map(() => 0);
     }
   }
 
-  private handleStepClick(trackIndex: number, stepIndex: number) {
-    this.grid[trackIndex][stepIndex] =
-      this.grid[trackIndex][stepIndex] === 1 ? 0 : 1;
-    this.requestUpdate('grid');
+  private handleStepClick(
+    trackIndex: number,
+    stepIndex: number,
+    e: MouseEvent,
+  ) {
+    if (e.altKey) {
+      // Cycle panning: 0 (center) -> -1 (left) -> 1 (right) -> 0
+      const currentPan = this.panningGrid[trackIndex][stepIndex];
+      let newPan = 0;
+      if (currentPan === 0) newPan = -1;
+      else if (currentPan === -1) newPan = 1;
+      else if (currentPan === 1) newPan = 0;
+
+      this.panningGrid[trackIndex][stepIndex] = newPan;
+      this.requestUpdate('panningGrid');
+    } else {
+      const currentVelocity = this.grid[trackIndex][stepIndex];
+      // Cycle: 0 (off) -> 2 (medium) -> 3 (loud) -> 1 (soft) -> 0
+      let newVelocity = 0;
+      switch (currentVelocity) {
+        case 0: // off
+          newVelocity = 2; // to medium
+          break;
+        case 1: // soft
+          newVelocity = 0; // to off
+          break;
+        case 2: // medium
+          newVelocity = 3; // to loud
+          break;
+        case 3: // loud
+          newVelocity = 1; // to soft
+          break;
+      }
+      this.grid[trackIndex][stepIndex] = newVelocity;
+      this.requestUpdate('grid');
+    }
     this.dispatchChange();
   }
 
@@ -900,13 +1031,25 @@ class BeatSequencer extends LitElement {
     const presetName = (e.target as HTMLSelectElement).value;
     if (this.presets[presetName]) {
       this.grid = this.presets[presetName].map((row) => [...row]); // deep copy
+      this.panningGrid = this.instruments.map(() =>
+        Array(this.numSteps).fill(0),
+      );
       this.dispatchChange();
     }
   }
 
   private handleRandomize() {
     this.grid = this.grid.map((track) =>
-      track.map(() => (Math.random() < 0.25 ? 1 : 0)),
+      track.map(() => {
+        const rand = Math.random();
+        if (rand < 0.15) return 3; // Loud
+        if (rand < 0.3) return 2; // Medium
+        if (rand < 0.4) return 1; // Soft
+        return 0; // Off
+      }),
+    );
+    this.panningGrid = this.instruments.map(() =>
+      Array(this.numSteps).fill(0),
     );
     this.dispatchChange();
   }
@@ -921,6 +1064,7 @@ class BeatSequencer extends LitElement {
       new CustomEvent('sequencer-changed', {
         detail: {
           grid: this.grid,
+          panningGrid: this.panningGrid,
           weight: this.weight,
         },
       }),
@@ -953,16 +1097,35 @@ class BeatSequencer extends LitElement {
       <div class="sequencer-grid">
         ${this.instruments.map(
           (instrument, trackIndex) => html`
+            <div class="visualizer">
+              <div
+                class="visualizer-bar"
+                style=${styleMap({
+                  transform: `scaleY(${
+                    this.trackVisualizerLevels[trackIndex] ?? 0
+                  })`,
+                })}></div>
+            </div>
             <div class="instrument-label">${instrument}</div>
             ${this.grid[trackIndex]?.map(
-              (step, stepIndex) => html`
+              (velocity, stepIndex) => html`
                 <div
                   class=${classMap({
                     step: true,
-                    active: step === 1,
+                    ['active-' + velocity]: velocity > 0,
                     playing: this.currentStep === stepIndex,
                   })}
-                  @click=${() => this.handleStepClick(trackIndex, stepIndex)}></div>
+                  title="Click to set velocity. Alt+Click to set panning."
+                  @click=${(e: MouseEvent) =>
+                    this.handleStepClick(trackIndex, stepIndex, e)}>
+                  <div class="panning-indicator">
+                    ${this.panningGrid[trackIndex]?.[stepIndex] === -1
+                      ? '◀'
+                      : this.panningGrid[trackIndex]?.[stepIndex] === 1
+                      ? '▶'
+                      : ''}
+                  </div>
+                </div>
               `,
             )}
           `,
@@ -1664,12 +1827,14 @@ class PromptDj extends LitElement {
   private connectionError = true;
   @state() private activeTab: 'prompts' | 'beats' = 'prompts';
   @state() private sequencerGrid: number[][] = [];
+  @state() private sequencerPanningGrid: number[][] = [];
   @state() private sequencerWeight = 0.0;
   @state() private currentBpm = 120;
 
   @query('play-pause-button') private playPauseButton!: PlayPauseButton;
   @query('toast-message') private toastMessage!: ToastMessage;
   @query('settings-controller') private settingsController!: SettingsController;
+  @query('beat-sequencer') private beatSequencer!: BeatSequencer;
 
   constructor() {
     super();
@@ -1686,9 +1851,12 @@ class PromptDj extends LitElement {
   }
 
   private initializeSequencer() {
-    const numTracks = 6;
+    const numTracks = 7;
     const numSteps = 16;
     this.sequencerGrid = Array.from({length: numTracks}, () =>
+      Array(numSteps).fill(0),
+    );
+    this.sequencerPanningGrid = Array.from({length: numTracks}, () =>
       Array(numSteps).fill(0),
     );
     this.sequencerWeight = 0;
@@ -1765,7 +1933,7 @@ class PromptDj extends LitElement {
       return '';
     }
 
-    let description = 'A brutal heavy bass and percussion track. ';
+    let description = 'A detailed drum machine pattern. ';
     const instruments = [
       'kick drum',
       'snare drum',
@@ -1773,13 +1941,62 @@ class PromptDj extends LitElement {
       'closed hi-hat',
       'open hi-hat',
       'toms',
+      'percussion',
     ];
+    // 1: soft, 2: medium, 3: loud
+    const velocityMap = {1: 'soft', 2: 'medium volume', 3: 'loud and punchy'};
     let activeInstruments = 0;
+
     this.sequencerGrid.forEach((track, i) => {
-      const hasNotes = track.some((step) => step === 1);
-      if (hasNotes) {
-        description += `It features a prominent ${instruments[i]}. `;
+      const activeSteps: {velocity: number; pan: number}[] = [];
+      track.forEach((velocity, stepIndex) => {
+        if (velocity > 0) {
+          activeSteps.push({
+            velocity,
+            pan: this.sequencerPanningGrid[i]?.[stepIndex] ?? 0,
+          });
+        }
+      });
+
+      if (activeSteps.length > 0) {
         activeInstruments++;
+        const avgVelocity =
+          activeSteps.reduce((a, b) => a + b.velocity, 0) /
+          activeSteps.length;
+        const velocityDescriptor =
+          avgVelocity < 1.5
+            ? velocityMap[1]
+            : avgVelocity < 2.5
+            ? velocityMap[2]
+            : velocityMap[3];
+
+        let instrumentDescription = `It features a ${velocityDescriptor} ${instruments[i]}`;
+
+        // Panning logic
+        const pans = activeSteps.map((step) => step.pan);
+        const numLeft = pans.filter((p) => p === -1).length;
+        const numRight = pans.filter((p) => p === 1).length;
+        const totalPanned = numLeft + numRight;
+
+        if (totalPanned / activeSteps.length > 0.5) {
+          // If more than half the hits are panned
+          if (numLeft > numRight * 2)
+            instrumentDescription += ' mostly panned left';
+          else if (numRight > numLeft * 2)
+            instrumentDescription += ' mostly panned right';
+          else if (numLeft > 0 && numRight > 0)
+            instrumentDescription += ' with wide stereo panning';
+        } else if (totalPanned > 0) {
+          // If some hits are panned
+          if (numLeft > 0 && numRight > 0)
+            instrumentDescription += ' with some stereo panning';
+          else if (numLeft > 0)
+            instrumentDescription += ' with some hits panned left';
+          else if (numRight > 0)
+            instrumentDescription += ' with some hits panned right';
+        }
+
+        description += instrumentDescription + '. ';
       }
     });
 
@@ -2004,9 +2221,14 @@ class PromptDj extends LitElement {
   }
 
   private handleSequencerChange(
-    e: CustomEvent<{grid: number[][]; weight: number}>,
+    e: CustomEvent<{
+      grid: number[][];
+      panningGrid: number[][];
+      weight: number;
+    }>,
   ) {
     this.sequencerGrid = e.detail.grid;
+    this.sequencerPanningGrid = e.detail.panningGrid;
     this.sequencerWeight = e.detail.weight;
     this.setSessionPrompts();
     this.requestUpdate();
@@ -2055,6 +2277,7 @@ class PromptDj extends LitElement {
       <div class="beats-area">
         <beat-sequencer
           .grid=${this.sequencerGrid}
+          .panningGrid=${this.sequencerPanningGrid}
           .weight=${this.sequencerWeight}
           .playbackState=${this.playbackState}
           .bpm=${this.currentBpm}
